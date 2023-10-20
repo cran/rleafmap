@@ -23,13 +23,14 @@
 #' @param leaflet.loc a character string specifying the location (directory) of the leaflet library.
 #' If set to "\code{online}" (default), the library is loaded from the leaflet
 #' official CDN and requires an internet connection.
+#' @param popup.style an optional character string of CSS to customize popups content properties (width, color, etc).
 #' 
 #' @export
 writeMap <- function(..., dir=getwd(), prefix="", width=700, height=400,
                      setView=NULL, setZoom=NULL,
                      interface=NULL, lightjson=FALSE,
                      directView=c("viewer", "browser", "disabled"),
-                     leaflet.loc="online"){
+                     leaflet.loc="online", popup.style = NULL){
   ar <- list(...)
   depsub <- deparse(substitute(list(...)))
   depsub <- unlist(cleanDepsub(depsub))
@@ -53,7 +54,7 @@ writeMap <- function(..., dir=getwd(), prefix="", width=700, height=400,
   
   writeMapInternal(ar=ar, dir=dir, prefix=prefix, width=width, height=height, setView=setView,
                    setZoom=setZoom, interface=interface,
-                   lightjson=lightjson, leaflet.loc=leaflet.loc)
+                   lightjson=lightjson, leaflet.loc=leaflet.loc, popup.style = popup.style)
   
   if(user.view == "browser"){
     browseURL(map.file)
@@ -67,7 +68,7 @@ writeMap <- function(..., dir=getwd(), prefix="", width=700, height=400,
       writeMapInternal(ar=ar, dir=tempdir(), prefix=prefix, width=width,
                        height=height, setView=setView,
                        setZoom=setZoom, interface=interface,
-                       lightjson=lightjson, leaflet.loc=leaflet.loc)
+                       lightjson=lightjson, leaflet.loc=leaflet.loc, popup.style = popup.style)
       if(leaflet.loc != "online"){
         #       file.copy(from=paste(leaflet.loc, "/leaflet.css", sep=""), to=tempdir(), overwrite=T)
         #       file.copy(from=paste(leaflet.loc, "/leaflet.js", sep=""), to=tempdir(), overwrite=T)
@@ -83,7 +84,7 @@ writeMap <- function(..., dir=getwd(), prefix="", width=700, height=400,
 
 
 writeMapInternal <- function(ar, dir, prefix, width, height, setView, setZoom,
-                             interface, lightjson, leaflet.loc){
+                             interface, lightjson, leaflet.loc, popup.style){
   
   ar.valid.class <- sapply(ar, function(x) is(x, "basemap") || is(x, "splpoints") || is(x, "splicons") || is(x, "spllines") || is(x, "splpolygons") || is(x, "splgrid"))
   if (any(ar.valid.class==FALSE)){
@@ -112,8 +113,13 @@ writeMapInternal <- function(ar, dir, prefix, width, height, setView, setZoom,
   inc.data <- incData(prefix = prefix)
   init.map0 <- initMap0(height = height, width = width)
   init.map1 <- initMap1(setView, setZoom)
+  if(is.null(popup.style)){
+    popup.style <- incPopupCSS(height = height, width = width)
+  } else {
+    popup.style <- paste0(".leaflet-popup-content {", popup.style, "}")
+  }
   inc.extra.css <- paste("<style type=\"text/css\">",
-                         incPopupCSS(height = height, width = width),
+                         popup.style,
                          incLegendCSS(),
                          incInfoPanelCSS(),
                          "</style>", sep = "\n\n")
@@ -128,15 +134,18 @@ writeMapInternal <- function(ar, dir, prefix, width, height, setView, setZoom,
   # Base Map
   bm <- ar[sapply(ar, function(x) is(x, "basemap"))]
   bm.js <- lapply(bm, toJS)
-  bm.js <- do.call("paste", c(bm.js, sep="\n\n"))
+  bm.js <- do.call("paste", c(bm.js, sep = "\n\n"))
   
   # Points  
   sppts <- ar[sapply(ar, function(x) is(x, "splpoints"))]
-  sppts.json <- lapply(sppts, toGeoJSON, lightjson=lightjson)
-  sppts.json <- do.call("paste", c(sppts.json, sep="\n\n\n\n"))
-  write(sppts.json, paste(data.dir, "/", prefix,"_datapoints.js", sep=""))
+  sppts.json <- lapply(sppts, toGeoJSON, lightjson = lightjson)
+  sppts.json <- do.call("paste", c(sppts.json, sep = "\n\n\n\n"))
+  out <- file(paste0(data.dir, "/", prefix, "_datapoints.js"), open = "w")
+  cat(iconv(sppts.json, to = "UTF-8"), file = out)
+  close(con = out)
+  rm(out)
   sppts.js <- lapply(sppts, toJS)
-  sppts.js <- do.call("paste", c(sppts.js, sep="\n\n"))
+  sppts.js <- do.call("paste", c(sppts.js, sep = "\n\n"))
   
   # Icons
   spico <- ar[sapply(ar, function(x) is(x, "splicons"))]
@@ -149,37 +158,49 @@ writeMapInternal <- function(ar, dir, prefix, width, height, setView, setZoom,
                    sep="")
     return(x)
   })
-  spico.json <- lapply(spico, toGeoJSON, lightjson=lightjson)
+  spico.json <- lapply(spico, toGeoJSON, lightjson = lightjson)
   spico.json <- do.call("paste", c(spico.json, sep="\n\n\n\n"))
-  write(spico.json, paste(data.dir, "/", prefix,"_dataicons.js", sep=""))
+  out <- file(paste0(data.dir, "/", prefix, "_dataicons.js"), open = "w")
+  cat(iconv(spico.json, to = "UTF-8"), file = out)
+  close(con = out)
+  rm(out)
   spico.js <- lapply(spico, toJS)
-  spico.js <- do.call("paste", c(spico.js, sep="\n\n"))
+  spico.js <- do.call("paste", c(spico.js, sep = "\n\n"))
   
   # Lines  
   splns <- ar[sapply(ar, function(x) is(x, "spllines"))]
-  splns.json <- lapply(splns, toGeoJSON, lightjson=lightjson)
-  splns.json <- do.call("paste", c(splns.json, sep="\n\n\n\n"))
-  write(splns.json, paste(data.dir, "/", prefix,"_datalines.js", sep=""))
+  splns.json <- lapply(splns, toGeoJSON, lightjson = lightjson)
+  splns.json <- do.call("paste", c(splns.json, sep = "\n\n\n\n"))
+  out <- file(paste0(data.dir, "/", prefix, "_datalines.js"), open = "w")
+  cat(iconv(splns.json, to = "UTF-8"), file = out)
+  close(con = out)
+  rm(out)
   splns.js <- lapply(splns, toJS)
-  splns.js <- do.call("paste", c(splns.js, sep="\n\n"))
+  splns.js <- do.call("paste", c(splns.js, sep = "\n\n"))
   
   # Polygons  
   sppol <- ar[sapply(ar, function(x) is(x, "splpolygons"))]
-  sppol.json <- lapply(sppol, toGeoJSON, lightjson=lightjson)
-  sppol.json <- do.call("paste", c(sppol.json, sep="\n\n\n\n"))
-  write(sppol.json, paste(data.dir, "/", prefix,"_datapolygons.js", sep=""))
+  sppol.json <- lapply(sppol, toGeoJSON, lightjson = lightjson)
+  sppol.json <- do.call("paste", c(sppol.json, sep = "\n\n\n\n"))
+  out <- file(paste0(data.dir, "/", prefix, "_datapolygons.js"), open = "w")
+  cat(iconv(sppol.json, to = "UTF-8"), file = out)
+  close(con = out)
+  rm(out)
   sppol.js <- lapply(sppol, toJS)
-  sppol.js <- do.call("paste", c(sppol.js, sep="\n\n"))
+  sppol.js <- do.call("paste", c(sppol.js, sep= "\n\n"))
   
   #Rasters
   spgrid <- ar[sapply(ar, function(x) is(x, "splgrid"))]
-  raster.dir <- paste(data.dir, "/", prefix, "_rasters", sep="")
+  raster.dir <- paste(data.dir, "/", prefix, "_rasters", sep = "")
   if(!file.exists(raster.dir))
     dir.create(raster.dir)
   spgrid.js <- lapply(spgrid, function(x){
-    url <- paste(raster.dir, "/", prefix, "_", safeVar(x$name), ".png", sep="")
-    spgrid.js <- toJS(x, paste(prefix, "_data","/", prefix, "_rasters", "/", prefix, "_", safeVar(x$name), ".png", sep=""))
-    png(url, bg = "transparent", width = 1200, height = round(1200 * pngasp(x$x.bbox)), type = "cairo")
+    if(!capabilities("png")){
+      warning("The png function is not operational on this system.")
+    }
+    url <- paste(raster.dir, "/", prefix, "_", safeVar(x$name), ".png", sep = "")
+    spgrid.js <- toJS(x, paste(prefix, "_data", "/", prefix, "_rasters", "/", prefix, "_", safeVar(x$name), ".png", sep = ""))
+    png(url, bg = "transparent", width = 1200, height = round(1200 * pngasp(x$x.bbox)))
     par(mar = c(0, 0, 0, 0), xaxs = "i", yaxs = "i")    
     image(x$x, col = x$cells.col, asp = 1/cos((mean(x$x.bbox[1, ]) * pi)/180))
     dev.off()
